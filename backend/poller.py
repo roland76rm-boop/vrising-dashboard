@@ -1,19 +1,19 @@
 """
 V Rising BepInEx Poller — Sprint 3
 ====================================
-Läuft auf dem Windows-PC (Keller-PC) als Python-Script.
-Pollt alle 60 Sekunden die lokale BepInEx HTTP API und
-schickt die Daten an das FastAPI Backend auf dem VPS.
+Laeuft auf dem Windows-PC waehrend V Rising aktiv ist.
+Pollt alle 60 Sekunden die VRisingDiscordBotCompanion HTTP API
+und schickt die Daten an das FastAPI Backend auf dem VPS.
 
-Voraussetzungen:
-  pip install requests schedule
+Plugin: VRisingDiscordBotCompanion (DarkAtra)
+  https://thunderstore.io/c/v-rising/p/DarkAtra/VRisingDiscordBotCompanion/
 
 Starten:
-  python poller.py
+  Doppelklick auf START_POLLER.bat
+  oder: python poller.py
 
-Als Windows-Service (z.B. mit NSSM):
-  nssm install VRisingPoller "python" "C:\path\to\poller.py"
-  nssm start VRisingPoller
+Voraussetzungen (automatisch durch setup_bepinex.ps1 installiert):
+  pip install requests schedule
 """
 
 import requests
@@ -24,104 +24,144 @@ from datetime import datetime
 
 # ─── Konfiguration ───────────────────────────────────────────────────────────
 
-BEPINEX_API   = "http://localhost:7070"   # Lokale BepInEx HTTP API
-BACKEND_API   = "https://vrising.haus543.at"  # VPS Backend
-POLL_INTERVAL = 60   # Sekunden
+PLUGIN_API   = "http://localhost:9876"            # VRisingDiscordBotCompanion
+BACKEND_API  = "https://vrising.haus543.at"       # VPS FastAPI Backend
+POLL_INTERVAL = 60                                # Sekunden
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler("poller.log", encoding="utf-8"),
+        logging.FileHandler("vrising_poller.log", encoding="utf-8"),
         logging.StreamHandler(),
     ],
 )
 log = logging.getLogger(__name__)
 
-# ─── VBlood-ID Mapping (BepInEx Guid → Dashboard ID) ────────────────────────
-# Wird ergänzt sobald das konkrete Plugin bekannt ist.
-# Format: {"BepInEx_Boss_Name": "dashboard-id"}
-VBLOOD_MAPPING: dict[str, str] = {
-    "Alpha Wolf":                  "alpha-wolf",
-    "Errol the Stonebreaker":      "errol-stonebreaker",
-    "Rufus the Foreman":           "rufus-foreman",
-    "Keely the Frost Archer":      "keely-frost-archer",
-    "Lidia the Chaos Archer":      "lidia-chaos-archer",
-    "Grayson the Armourer":        "grayson-armourer",
-    "Clive the Firestarter":       "clive-firestarter",
-    "Polora the Feywalker":        "polora-feywalker",
-    "Ferocious Bear":              "ferocious-bear",
-    "Quincey the Bandit King":     "quincey-bandit-king",
-    "Beatrice the Tailor":         "beatrice-tailor",
-    "Vincent the Frostbringer":    "vincent-frostbringer",
-    "Christina the Sun Priestess": "christina-sun-priestess",
-    "Nicholaus the Fallen":        "nicholaus-fallen",
-    "Leandra the Shadow Priestess":"leandra-shadow-priestess",
-    "Terah the Geomancer":         "terah-geomancer",
-    "Meredith the Bright Archer":  "meredith-bright-archer",
-    "Octavian the Militia Captain":"octavian-militia-captain",
-    "Raziel the Shepherd":         "raziel-shepherd",
-    "Jade the Vampire Hunter":     "jade-vampire-hunter",
-    "Willfred the Werewolf Chief": "willfred-werewolf-chief",
-    "Solarus the Immaculate":      "solarus-immaculate",
-    "Dracula the Immortal":        "summons-of-dracula",
-}
-
 # ─── Poller ──────────────────────────────────────────────────────────────────
 
 def poll():
-    log.info("Polling BepInEx API...")
+    log.info("Polling VRisingDiscordBotCompanion API...")
+
+    # ── Characters (GearScore + VBloods) ──
     try:
-        # Spieler-Daten
-        players = requests.get(f"{BEPINEX_API}/api/players", timeout=5).json()
-        # VBlood-Kill-Liste
-        vbloods = requests.get(f"{BEPINEX_API}/api/vbloods", timeout=5).json()
+        chars = requests.get(
+            f"{PLUGIN_API}/v-rising-discord-bot/characters",
+            timeout=5
+        ).json()
     except Exception as e:
-        log.warning(f"BepInEx API nicht erreichbar (Spiel läuft nicht?): {e}")
+        log.warning(f"Plugin API nicht erreichbar (Spiel laeuft nicht?): {e}")
         return
 
-    if not players:
-        log.info("Keine Spieler aktiv.")
+    if not chars:
+        log.info("Keine Charaktere aktiv.")
         return
 
     # Erster Spieler (Single Player)
-    player = players[0]
-    gear_score   = player.get("gearScore",    0)
-    hours_played = player.get("hoursPlayed",  0.0)
-    blood_type   = player.get("bloodType",    "Krieger")
-    blood_quality = player.get("bloodQuality", 0)
+    player = chars[0]
 
-    # VBlood IDs mappen
-    killed_ids = []
-    for vb in vbloods:
-        name = vb.get("name", "")
-        mapped = VBLOOD_MAPPING.get(name)
-        if mapped:
-            killed_ids.append(mapped)
-        else:
-            log.debug(f"Unbekannter Boss: {name}")
+    gear_score     = player.get("gearLevel", 0)
+    player_name    = player.get("name", "Vampir")
+    blood_type     = player.get("bloodType", "Krieger")
+    blood_quality  = int(player.get("bloodQuality", 0))
 
-    # Ans Backend schicken
+    # VBlood IDs aus der Characters-Antwort
+    # Das Plugin liefert eine Liste der besiegten VBloods pro Charakter
+    defeated_vbloods = player.get("killedVBloods", [])
+    killed_ids = [_map_vblood(name) for name in defeated_vbloods]
+    killed_ids = [v for v in killed_ids if v]  # None-Werte entfernen
+
+    log.info(f"Spieler: {player_name} | GS: {gear_score} | VBloods: {len(killed_ids)}")
+
+    # ── Ans Backend schicken ──
     try:
         resp = requests.post(f"{BACKEND_API}/api/progress", json={
-            "gear_score":     gear_score,
-            "hours_played":   hours_played,
-            "blood_type":     blood_type,
-            "blood_quality":  blood_quality,
-            "vbloods_killed": killed_ids,
+            "player_name":     player_name,
+            "gear_score":      gear_score,
+            "blood_type":      blood_type,
+            "blood_quality":   blood_quality,
+            "vbloods_killed":  killed_ids,
         }, timeout=10)
+
         if resp.ok:
-            log.info(f"Update OK — GS {gear_score}, {len(killed_ids)} VBloods besiegt")
+            log.info(f"Backend Update OK — GS {gear_score}, {len(killed_ids)} VBloods besiegt")
         else:
-            log.error(f"Backend Fehler: {resp.status_code} {resp.text}")
+            log.error(f"Backend Fehler: {resp.status_code} {resp.text[:200]}")
     except Exception as e:
         log.error(f"Backend nicht erreichbar: {e}")
 
 
+def _map_vblood(plugin_name: str) -> str | None:
+    """
+    Mappt den Plugin-internen VBlood-Namen auf die Dashboard-ID.
+    Die genauen Namen des Plugins koennen beim ersten Spielstart
+    aus dem Log abgelesen und hier ergaenzt werden.
+    """
+    mapping = {
+        # Farbane Waelder
+        "Alpha Wolf":                   "alpha-wolf",
+        "Errol the Stonebreaker":       "errol-stonebreaker",
+        "Rufus the Foreman":            "rufus-foreman",
+        "Keely the Frost Archer":       "keely-frost-archer",
+        "Lidia the Chaos Archer":       "lidia-chaos-archer",
+        "Grayson the Armourer":         "grayson-armourer",
+        "Clive the Firestarter":        "clive-firestarter",
+        "Polora the Feywalker":         "polora-feywalker",
+        "Ferocious Bear":               "ferocious-bear",
+        "Quincey the Bandit King":      "quincey-bandit-king",
+        "Beatrice the Tailor":          "beatrice-tailor",
+        "Vincent the Frostbringer":     "vincent-frostbringer",
+        "Bane the Shadowblade":         "bane-shadowblade",
+        "Goreswine the Ravager":        "goreswine-ravager",
+        "Putrid Rat":                   "putrid-rat",
+        "Tristan the Vampire Hunter":   "tristan-vampire-hunter",
+        # Dunley Farmland
+        "Christina the Sun Priestess":  "christina-sun-priestess",
+        "Nicholaus the Fallen":         "nicholaus-fallen",
+        "Leandra the Shadow Priestess": "leandra-shadow-priestess",
+        "Terah the Geomancer":          "terah-geomancer",
+        "Meredith the Bright Archer":   "meredith-bright-archer",
+        "Octavian the Militia Captain": "octavian-militia-captain",
+        "Raziel the Shepherd":          "raziel-shepherd",
+        "Jade the Vampire Hunter":      "jade-vampire-hunter",
+        "Willfred the Werewolf Chief":  "willfred-werewolf-chief",
+        # Silverlight Hills
+        "Foulrot the Soultaker":        "foulrot-soultaker",
+        "Ungora the Spider Queen":      "ungora-spider-queen",
+        "Ziva the Engineer":            "ziva-engineer",
+        "Mairwyn the Elementalist":     "mairwyn-elementalist",
+        "Styx the Sunderer":            "styx-sunderer",
+        "Cyril the Cursed Smith":       "cyril-cursed-smith",
+        "Morian the Stormwing Matriarch": "morian-stormwing",
+        "Sir Magnus the Overseer":      "sir-magnus",
+        "Angram the Purifier":          "angram-purifier",
+        "Henry Blackbrew the Doctor":   "henry-blackbrew",
+        "Solarus the Immaculate":       "solarus-immaculate",
+        # Mortium
+        "Voltatia the Power Master":    "voltatia-power-master",
+        "Florian and Cerise":           "florian-cerise",
+        "Domina the Decimatrix":        "domina-decimatrix",
+        "Nightmarshal Styx the Sunderer": "nightmarshal-styx",
+        "Magnus the Behemoth":          "magnus-behemoth",
+        "Prince Domiel":                "prince-domiel",
+        # Oakveil Waelder
+        "Liege Golem":                  "liege-golem",
+        # Endgame
+        "Dracula":                      "summons-of-dracula",
+    }
+    result = mapping.get(plugin_name)
+    if not result:
+        log.debug(f"Unbekannter VBlood-Name vom Plugin: '{plugin_name}' — bitte in poller.py ergaenzen")
+    return result
+
+
 def main():
-    log.info(f"V Rising Poller gestartet (Intervall: {POLL_INTERVAL}s)")
-    log.info(f"BepInEx API: {BEPINEX_API}")
+    log.info("=" * 50)
+    log.info("V Rising Poller gestartet")
+    log.info(f"Plugin API:  {PLUGIN_API}")
     log.info(f"Backend:     {BACKEND_API}")
+    log.info(f"Intervall:   {POLL_INTERVAL}s")
+    log.info("=" * 50)
 
     # Einmal sofort
     poll()
