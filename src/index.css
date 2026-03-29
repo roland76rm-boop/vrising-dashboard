@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme {
+  --color-blood: #DC143C;
+  --color-blood-dark: #8B0000;
+  --color-blood-deeper: #5C0000;
+  --color-vampire-bg: #0a0a0f;
+  --color-vampire-surface: #111118;
+  --color-vampire-card: #1a1a24;
+  --color-vampire-border: #2a1a2a;
+  --color-vampire-muted: #6b5b6b;
+  --color-vampire-text: #e8d5e8;
+  --color-vampire-subtle: #a89ab0;
+  --color-gold: #c9a94e;
+  --color-silver: #9ca3af;
+}
+
+body {
+  background-color: #0a0a0f;
+  color: #e8d5e8;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #111118;
+}
+::-webkit-scrollbar-thumb {
+  background: #8B0000;
+  border-radius: 3px;
+}
+
+/* Glow effects */
+.blood-glow {
+  box-shadow: 0 0 12px rgba(220, 20, 60, 0.3);
+}
+.blood-glow-text {
+  text-shadow: 0 0 8px rgba(220, 20, 60, 0.5);
+}
