@@ -30,7 +30,11 @@ export function AIGuide({ progress }: AIGuideProps) {
   const [guide, setGuide] = useState<GuideResult | null>(loadCache);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('vrising-api-key') || '');
+  const [apiKey, setApiKey] = useState(() =>
+    localStorage.getItem('vrising-api-key') ||
+    (import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined) ||
+    ''
+  );
   const [showKeyInput, setShowKeyInput] = useState(false);
 
   const needsRefresh = !guide ||
