@@ -12,6 +12,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const {
     progress,
+    syncStatus,
     update,
     updateGearScore,
     toggleVBlood,
@@ -25,6 +26,7 @@ export default function App() {
       activeTab={activeTab}
       onTabChange={setActiveTab}
       playerName={progress.playerName}
+      syncStatus={syncStatus}
     >
       {activeTab === 'overview' && (
         <Overview

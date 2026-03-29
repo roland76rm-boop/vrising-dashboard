@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StatCard } from '../ui/StatCard';
 import { ProgressBar } from '../ui/ProgressBar';
+import { GearChart } from '../ui/GearChart';
 import type { PlayerProgress, BloodType } from '../../types';
 import type { Region } from '../../data/vbloods';
 import { VBLOODS, REGIONS } from '../../data/vbloods';
@@ -69,6 +70,14 @@ export function Overview({ progress, onUpdate, onUpdateGearScore }: OverviewProp
         <h2 className="text-sm font-semibold text-[#a89ab0] uppercase tracking-wider mb-3">Vampirblut-Fortschritt</h2>
         <ProgressBar value={vbloodsPct} label={`${vbloodsKilledCount} von ${totalVBloods} VBloods besiegt`} height="h-3" />
       </div>
+
+      {/* Gear Score Chart */}
+      {progress.gearScoreHistory.length > 0 && (
+        <div className="bg-[#1a1a24] rounded-xl p-4 border border-[#2a1a2a]">
+          <h2 className="text-sm font-semibold text-[#a89ab0] uppercase tracking-wider mb-2">⚔️ Gear Score Verlauf</h2>
+          <GearChart history={progress.gearScoreHistory} />
+        </div>
+      )}
 
       {/* Nächster Boss */}
       {nextBoss && (

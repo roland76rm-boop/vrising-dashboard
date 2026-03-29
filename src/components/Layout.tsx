@@ -1,4 +1,18 @@
 import type { TabId } from '../types';
+import type { SyncStatus } from '../store/useProgress';
+
+const SYNC_ICONS: Record<SyncStatus, string> = {
+  idle:    '⬜',
+  syncing: '🔄',
+  online:  '🟢',
+  offline: '🟡',
+};
+const SYNC_LABELS: Record<SyncStatus, string> = {
+  idle:    '',
+  syncing: 'Sync...',
+  online:  'Online',
+  offline: 'Offline (lokal)',
+};
 
 interface Tab {
   id: TabId;
@@ -18,10 +32,11 @@ interface LayoutProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
   playerName: string;
+  syncStatus: SyncStatus;
   children: React.ReactNode;
 }
 
-export function Layout({ activeTab, onTabChange, playerName, children }: LayoutProps) {
+export function Layout({ activeTab, onTabChange, playerName, syncStatus, children }: LayoutProps) {
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-[#e8d5e8]">
       {/* Header */}
@@ -33,9 +48,17 @@ export function Layout({ activeTab, onTabChange, playerName, children }: LayoutP
             </h1>
             <p className="text-xs text-[#6b5b6b] uppercase tracking-widest">Vampir-Tracker V1.0</p>
           </div>
-          <div className="text-sm text-[#a89ab0]">
-            <span className="text-[#6b5b6b]">Spieler: </span>
-            <span className="text-red-300 font-medium">{playerName}</span>
+          <div className="flex items-center gap-4 text-sm text-[#a89ab0]">
+            {syncStatus !== 'idle' && (
+              <span className="text-xs text-[#6b5b6b] flex items-center gap-1">
+                <span>{SYNC_ICONS[syncStatus]}</span>
+                <span>{SYNC_LABELS[syncStatus]}</span>
+              </span>
+            )}
+            <div>
+              <span className="text-[#6b5b6b]">Spieler: </span>
+              <span className="text-red-300 font-medium">{playerName}</span>
+            </div>
           </div>
         </div>
 
