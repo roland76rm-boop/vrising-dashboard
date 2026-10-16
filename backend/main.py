@@ -5,6 +5,9 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
 import json
+import os
+
+import httpx
 
 from database import engine, get_db, Base
 from models import PlayerProgress, LootItem, GearScoreHistory
@@ -181,3 +184,29 @@ def _loot_out(l: LootItem) -> dict:
         "obtained_from": l.obtained_from,
         "notes":        l.notes,
     }
+
+
+# ─── KI-Guide über den LiteLLM-Gateway (MODEL_POLICY §1a: eigener Virtual Key, nie direkt an Anthropic) ───
+
+LITELLM_BASE_URL = os.environ.get("LITELLM_BASE_URL", "https://api.haus543.at").rstrip("/")
+LITELLM_API_KEY = os.environ.get("LITELLM_API_KEY", "")
+
+
+class GuideIn(BaseModel):
+    prompt: str
+
+
+@app.post("/api/ai-guide")
+async def ai_guide(body: GuideIn):
+    if not LITELLM_API_KEY:
+        raise HTTPException(503, "LITELLM_API_KEY nicht gesetzt")
+    if len(body.prompt) > 8000:
+        raise HTTPException(400, "Prompt zu lang")
+    async with httpx.AsyncClient(timeout=60) as c:
+        r = await c.post(f"{LITELLM_BASE_URL}/v1/chat/completions",
+                         headers={"Authorization": f"Bearer {LITELLM_API_KEY}"},
+                         json={"model": "claude-sonnet", "max_tokens": 600,
+                               "messages": [{"role": "user", "content": body.prompt}]})
+    if r.status_code >= 400:
+        raise HTTPException(502, f"KI-Gateway: HTTP {r.status_code}")
+    return {"text": r.json()["choices"][0]["message"]["content"]}

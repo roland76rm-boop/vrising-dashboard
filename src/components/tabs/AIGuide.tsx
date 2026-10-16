@@ -2,6 +2,8 @@ import { useState, useCallback } from 'react';
 import type { PlayerProgress } from '../../types';
 import { VBLOODS } from '../../data/vbloods';
 
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || '';
+
 interface AIGuideProps {
   progress: PlayerProgress;
 }
@@ -30,12 +32,6 @@ export function AIGuide({ progress }: AIGuideProps) {
   const [guide, setGuide] = useState<GuideResult | null>(loadCache);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState(() =>
-    localStorage.getItem('vrising-api-key') ||
-    (import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined) ||
-    ''
-  );
-  const [showKeyInput, setShowKeyInput] = useState(false);
 
   const needsRefresh = !guide ||
     guide.gearScoreAtGeneration !== progress.gearScore ||
@@ -49,10 +45,6 @@ export function AIGuide({ progress }: AIGuideProps) {
     .slice(0, 6);
 
   const generateGuide = useCallback(async () => {
-    if (!apiKey) {
-      setShowKeyInput(true);
-      return;
-    }
     setLoading(true);
     setError(null);
 
@@ -83,28 +75,20 @@ Format für jede Empfehlung:
 Abschluss: Ein kurzer motivierender Satz passend zum Vampir-Thema.`;
 
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      // KI läuft über das eigene Backend → LiteLLM-Gateway (MODEL_POLICY §1a): kein API-Key im Browser.
+      const response = await fetch(`${API_BASE}/api/ai-guide`, {
         method: 'POST',
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-          'anthropic-dangerous-direct-browser-calls': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 600,
-          messages: [{ role: 'user', content: prompt }],
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
       });
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error((err as { error?: { message?: string } }).error?.message || `HTTP ${response.status}`);
+        throw new Error((err as { detail?: string }).detail || `HTTP ${response.status}`);
       }
 
-      const data = await response.json() as { content: Array<{ type: string; text: string }> };
-      const text = data.content[0]?.text ?? '';
+      const data = await response.json() as { text: string };
+      const text = data.text ?? '';
 
       const result: GuideResult = {
         text,
@@ -119,12 +103,8 @@ Abschluss: Ein kurzer motivierender Satz passend zum Vampir-Thema.`;
     } finally {
       setLoading(false);
     }
-  }, [apiKey, progress, killedBosses, openBosses]);
+  }, [progress, killedBosses, openBosses]);
 
-  function saveApiKey() {
-    localStorage.setItem('vrising-api-key', apiKey);
-    setShowKeyInput(false);
-  }
 
   // Markdown-ähnliches Rendering (fett + kursiv)
   function renderText(text: string) {
@@ -150,36 +130,8 @@ Abschluss: Ein kurzer motivierender Satz passend zum Vampir-Thema.`;
           <h2 className="text-lg font-bold text-[#e8d5e8]">🧛 KI-Vampir-Guide</h2>
           <p className="text-sm text-[#6b5b6b]">Personalisierter Next-Steps Guide basierend auf deinem Spielstand</p>
         </div>
-        <button
-          onClick={() => setShowKeyInput(v => !v)}
-          className="text-xs text-[#6b5b6b] hover:text-[#a89ab0] transition-colors"
-          title="API Key konfigurieren"
-        >
-          🔑 API Key
-        </button>
       </div>
 
-      {/* API Key Input */}
-      {showKeyInput && (
-        <div className="bg-[#1a1a24] rounded-xl p-4 border border-yellow-900/30">
-          <p className="text-xs text-yellow-600 mb-2">Claude API Key (wird nur lokal im Browser gespeichert)</p>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              placeholder="sk-ant-..."
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              className="flex-1 bg-[#111118] border border-[#2a1a2a] rounded-lg px-3 py-2 text-sm text-[#e8d5e8] focus:outline-none focus:border-yellow-800"
-            />
-            <button
-              onClick={saveApiKey}
-              className="px-4 py-2 bg-yellow-900/40 hover:bg-yellow-800/50 text-yellow-300 border border-yellow-800/50 rounded-lg text-sm transition-colors"
-            >
-              Speichern
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Status Snapshot */}
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
@@ -256,11 +208,6 @@ Abschluss: Ein kurzer motivierender Satz passend zum Vampir-Thema.`;
           <div className="text-5xl mb-4">🧛</div>
           <p className="text-lg font-medium text-[#a89ab0]">Dein persönlicher Vampir-Guide wartet</p>
           <p className="text-sm mt-2">Klicke auf "Guide generieren" um einen personalisierten<br />Next-Steps Guide zu erhalten.</p>
-          {!apiKey && (
-            <p className="text-xs text-yellow-600 mt-3">
-              Benötigt: Claude API Key (🔑 oben rechts konfigurieren)
-            </p>
-          )}
         </div>
       )}
     </div>
